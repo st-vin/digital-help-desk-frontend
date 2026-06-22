@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Admin Analytics</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body class="page-wrapper">
+
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-brand">
+        <div class="brand-mark">MK</div>
+        <span class="top-bar-title">Admin — Analytics</span>
+      </div>
+      <div class="top-bar-actions">
+        <a href="users.html" class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);">👥 Users</a>
+        <span class="top-bar-user hide-mobile">
+          <strong data-user-name></strong>
+          <span style="color:var(--secondary-container); font-size:11px; margin-left:4px;">ADMIN</span>
+        </span>
+        <button class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);" data-logout>Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main">
+    <div class="container">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Analytics Dashboard</h1>
+          <p class="page-subtitle">System-wide helpdesk performance overview</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="refreshBtn">↻ Refresh</button>
+      </div>
+
+      <div id="alertArea"></div>
+
+      <!-- Stat cards -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="spinner" style="margin:0 auto;"></div></div>
+        <div class="stat-card"><div class="spinner" style="margin:0 auto;"></div></div>
+        <div class="stat-card"><div class="spinner" style="margin:0 auto;"></div></div>
+        <div class="stat-card"><div class="spinner" style="margin:0 auto;"></div></div>
+      </div>
+
+      <!-- Avg resolution -->
+      <div class="card mb-md" id="avgCard" style="display:none;">
+        <div class="flex items-center gap-md">
+          <div>
+            <div class="label-md">Average Resolution Time</div>
+            <div id="avgResolution" style="font-family:var(--font-head);font-size:28px;font-weight:700;color:var(--primary);margin-top:4px;"></div>
+          </div>
+          <div style="font-size:36px;">⏱</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3>Tickets by Status</h3>
+          <canvas id="statusChart" height="220"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Tickets by Category</h3>
+          <canvas id="categoryChart" height="220"></canvas>
+        </div>
+      </div>
+
+      <!-- Staff performance table -->
+      <div class="card mt-md">
+        <div class="card-header">
+          <span class="card-title">👥 Staff Performance</span>
+        </div>
+        <div class="table-wrapper">
+          <table id="staffTable">
+            <thead>
+              <tr>
+                <th>Staff Member</th>
+                <th>Assigned</th>
+                <th>Resolved</th>
+                <th>Resolution Rate</th>
+              </tr>
+            </thead>
+            <tbody id="staffBody">
+              <tr><td colspan="4" style="text-align:center;padding:24px;color:var(--on-surface-variant);">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-container"></div>
+
+  <script type="module">
+    import { auth, adminApi, renderNavUser, toast } from '../assets/js/api.js';
+
+    if (!auth.requireRole('ADMIN')) throw new Error('Access denied');
+    renderNavUser();
+
+    let statusChartInst   = null;
+    let categoryChartInst = null;
+
+    const BLUE_PALETTE = ['#0056d2','#fcd400','#15803d','#475569','#e11d48','#7c3aed','#0891b2'];
+
+    async function loadAnalytics() {
+      try {
+        const d = await adminApi.analytics();
+
+        // Stats grid
+        document.getElementById('statsGrid').innerHTML = `
+          <div class="stat-card">
+            <div class="stat-value">${d.totalTickets}</div>
+            <div class="stat-label">Total Tickets</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${d.openTickets}</div>
+            <div class="stat-label">Open</div>
+          </div>
+          <div class="stat-card accent-gold">
+            <div class="stat-value">${d.inProgressTickets}</div>
+            <div class="stat-label">In Progress</div>
+          </div>
+          <div class="stat-card accent-green">
+            <div class="stat-value">${d.resolvedTickets + d.closedTickets}</div>
+            <div class="stat-label">Resolved / Closed</div>
+          </div>`;
+
+        // Avg resolution
+        const avgEl = document.getElementById('avgCard');
+        avgEl.style.display = 'block';
+        const hrs = d.averageResolutionHours || 0;
+        document.getElementById('avgResolution').textContent = hrs > 0
+          ? `${Math.round(hrs)} hours`
+          : 'N/A';
+
+        // Status pie
+        const statusCtx = document.getElementById('statusChart').getContext('2d');
+        if (statusChartInst) statusChartInst.destroy();
+        statusChartInst = new Chart(statusCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Open', 'In Progress', 'Resolved', 'Closed'],
+            datasets: [{
+              data: [d.openTickets, d.inProgressTickets, d.resolvedTickets, d.closedTickets],
+              backgroundColor: ['#0056d2','#fcd400','#15803d','#94a3b8'],
+              borderWidth: 2,
+              borderColor: '#fff'
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 } } }
+            },
+            cutout: '60%'
+          }
+        });
+
+        // Category bar
+        const cats   = d.ticketsByCategory || [];
+        const catCtx = document.getElementById('categoryChart').getContext('2d');
+        if (categoryChartInst) categoryChartInst.destroy();
+        categoryChartInst = new Chart(catCtx, {
+          type: 'bar',
+          data: {
+            labels: cats.map(c => c.categoryName),
+            datasets: [{
+              label: 'Tickets',
+              data:  cats.map(c => c.ticketCount),
+              backgroundColor: cats.map((_, i) => BLUE_PALETTE[i % BLUE_PALETTE.length]),
+              borderRadius: 4,
+              borderSkipped: false
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f0f0f0' } },
+              x: { grid: { display: false } }
+            }
+          }
+        });
+
+        // Staff table
+        const perf = d.staffPerformance || [];
+        const tbody = document.getElementById('staffBody');
+        if (!perf.length) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--on-surface-variant);">No staff data yet.</td></tr>';
+        } else {
+          tbody.innerHTML = perf.map(s => {
+            const rate = s.assignedCount > 0
+              ? Math.round((s.resolvedCount / s.assignedCount) * 100) + '%'
+              : '—';
+            const rateColor = parseInt(rate) >= 70 ? '#15803d' : parseInt(rate) >= 40 ? '#854d0e' : '#b91c1c';
+            return `<tr>
+              <td><strong>${escHtml(s.staffName)}</strong></td>
+              <td>${s.assignedCount}</td>
+              <td>${s.resolvedCount}</td>
+              <td style="color:${rateColor};font-weight:600;">${rate}</td>
+            </tr>`;
+          }).join('');
+        }
+
+      } catch (err) {
+        document.getElementById('alertArea').innerHTML =
+          `<div class="alert alert-error">Failed to load analytics: ${err.message}</div>`;
+      }
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', loadAnalytics);
+    loadAnalytics();
+  </script>
+</body>
+</html>

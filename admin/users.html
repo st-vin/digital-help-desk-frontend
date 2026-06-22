@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — User Management</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="page-wrapper">
+
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-brand">
+        <a href="dashboard.html" class="btn-ghost btn-sm" style="color:rgba(255,255,255,0.8); padding:6px 8px; min-height:unset;">← Analytics</a>
+        <div class="brand-mark hide-mobile">MK</div>
+        <span class="top-bar-title hide-mobile">User Management</span>
+      </div>
+      <div class="top-bar-actions">
+        <span class="top-bar-user hide-mobile">
+          <strong data-user-name></strong>
+          <span style="color:var(--secondary-container); font-size:11px; margin-left:4px;">ADMIN</span>
+        </span>
+        <button class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);" data-logout>Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main">
+    <div class="container">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Staff Accounts</h1>
+          <p class="page-subtitle">Create and manage support staff</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="openModalBtn">+ Create Staff</button>
+      </div>
+
+      <div id="alertArea"></div>
+
+      <!-- Staff list -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">All Staff Members</span>
+          <button class="btn btn-ghost btn-sm" id="refreshBtn">↻ Refresh</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="staffBody">
+              <tr><td colspan="5" style="text-align:center;padding:32px;color:var(--on-surface-variant);">
+                <div class="spinner" style="margin:0 auto;"></div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Create Staff Modal -->
+  <div id="modalOverlay" class="hidden" style="
+    position:fixed;inset:0;background:rgba(0,0,0,0.45);
+    display:flex;align-items:center;justify-content:center;
+    z-index:200;padding:20px;">
+    <div class="card" style="width:100%;max-width:440px;max-height:90vh;overflow-y:auto;">
+      <div class="card-header">
+        <span class="card-title">Create Staff Account</span>
+        <button class="btn btn-ghost btn-sm" id="closeModalBtn" style="font-size:18px;">×</button>
+      </div>
+
+      <div id="modalAlert" class="alert alert-error hidden"></div>
+
+      <form id="createForm" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="staffName">Full Name</label>
+          <input class="form-control" type="text" id="staffName" placeholder="Staff Member Name" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="staffEmail">Email</label>
+          <input class="form-control" type="email" id="staffEmail" placeholder="staff@mku.ac.ke" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="staffPassword">Temporary Password</label>
+          <input class="form-control" type="password" id="staffPassword" placeholder="Min. 8 characters" required />
+          <span class="form-hint">Staff will use this to log in initially.</span>
+        </div>
+        <div class="flex gap-sm mt-md" style="flex-wrap:wrap;">
+          <button type="submit" class="btn btn-primary" id="createBtn">Create Account</button>
+          <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast-container"></div>
+
+  <script type="module">
+    import { auth, adminApi, renderNavUser, showAlert, hideAlert, toast } from '../assets/js/api.js';
+
+    if (!auth.requireRole('ADMIN')) throw new Error('Access denied');
+    renderNavUser();
+
+    const staffBody   = document.getElementById('staffBody');
+    const alertArea   = document.getElementById('alertArea');
+    const modalOverlay= document.getElementById('modalOverlay');
+    const modalAlert  = document.getElementById('modalAlert');
+    const createForm  = document.getElementById('createForm');
+    const createBtn   = document.getElementById('createBtn');
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function loadStaff() {
+      staffBody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;">
+        <div class="spinner" style="margin:0 auto;"></div></td></tr>`;
+      try {
+        const users = await adminApi.listStaff();
+        if (!users || !users.length) {
+          staffBody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--on-surface-variant);">No staff accounts yet.</td></tr>`;
+          return;
+        }
+        staffBody.innerHTML = users.map(u => `
+          <tr>
+            <td>
+              <div style="font-weight:600;color:var(--navy);">${escHtml(u.fullName)}</div>
+            </td>
+            <td style="color:var(--on-surface-variant);font-size:13px;">${escHtml(u.email)}</td>
+            <td>
+              <span class="badge" style="background:var(--primary-container);color:var(--primary-dark);">${escHtml(u.role)}</span>
+            </td>
+            <td>
+              <span class="status-dot ${u.active ? 'active' : 'inactive'}"></span>
+              <span style="font-size:13px;">${u.active ? 'Active' : 'Inactive'}</span>
+            </td>
+            <td>
+              <button class="btn btn-sm ${u.active ? 'btn-danger' : 'btn-secondary'}"
+                      data-toggle="${u.id}"
+                      data-active="${u.active}">
+                ${u.active ? 'Deactivate' : 'Activate'}
+              </button>
+            </td>
+          </tr>`).join('');
+
+        // Bind toggle buttons
+        staffBody.querySelectorAll('[data-toggle]').forEach(btn => {
+          btn.addEventListener('click', () => toggleUser(btn.dataset.toggle, btn.dataset.active === 'true', btn));
+        });
+
+      } catch (err) {
+        alertArea.innerHTML = `<div class="alert alert-error">Failed to load staff: ${err.message}</div>`;
+      }
+    }
+
+    async function toggleUser(id, currentlyActive, btn) {
+      const action = currentlyActive ? 'deactivate' : 'activate';
+      if (!confirm(`Are you sure you want to ${action} this account?`)) return;
+      btn.disabled = true;
+      try {
+        await adminApi.toggleUser(id);
+        toast(`Account ${action}d successfully.`, 'success');
+        await loadStaff();
+      } catch (err) {
+        toast(err.message || `Failed to ${action} account.`, 'error');
+        btn.disabled = false;
+      }
+    }
+
+    // Modal
+    document.getElementById('openModalBtn').addEventListener('click', () => {
+      modalOverlay.classList.remove('hidden');
+      modalOverlay.style.display = 'flex';
+      hideAlert(modalAlert);
+      createForm.reset();
+    });
+
+    function closeModal() {
+      modalOverlay.classList.add('hidden');
+      modalOverlay.style.display = 'none';
+    }
+
+    document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+    document.getElementById('cancelBtn').addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+
+    createForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert(modalAlert);
+
+      const fullName = document.getElementById('staffName').value.trim();
+      const email    = document.getElementById('staffEmail').value.trim();
+      const password = document.getElementById('staffPassword').value;
+
+      if (!fullName || !email || !password) {
+        showAlert(modalAlert, 'All fields are required.', 'error'); return;
+      }
+      if (password.length < 8) {
+        showAlert(modalAlert, 'Password must be at least 8 characters.', 'error'); return;
+      }
+
+      createBtn.disabled = true;
+      createBtn.classList.add('btn-loading');
+      createBtn.textContent = 'Creating…';
+
+      try {
+        await adminApi.createStaff({ fullName, email, password });
+        toast('Staff account created successfully!', 'success');
+        closeModal();
+        await loadStaff();
+      } catch (err) {
+        showAlert(modalAlert, err.message || 'Failed to create account.', 'error');
+      } finally {
+        createBtn.disabled = false;
+        createBtn.classList.remove('btn-loading');
+        createBtn.textContent = 'Create Account';
+      }
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', loadStaff);
+    loadStaff();
+  </script>
+</body>
+</html>

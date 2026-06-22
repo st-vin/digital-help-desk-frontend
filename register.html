@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Register</title>
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card" style="max-width:460px;">
+      <div class="auth-logo">
+        <div class="auth-logo-mark">MK</div>
+        <div class="auth-logo-name">Student Registration</div>
+        <div class="auth-logo-sub">Create your helpdesk account</div>
+      </div>
+
+      <div id="alert" class="alert alert-error hidden" role="alert"></div>
+
+      <form id="regForm" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="studentNumber">Student Number</label>
+          <input class="form-control" type="text" id="studentNumber" name="studentNumber"
+                 placeholder="e.g. MKU/2023/001" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="fullName">Full Name</label>
+          <input class="form-control" type="text" id="fullName" name="fullName"
+                 placeholder="Jane Doe" required autocomplete="name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="email">Email Address</label>
+          <input class="form-control" type="email" id="email" name="email"
+                 placeholder="you@mku.ac.ke" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-control" type="password" id="password" name="password"
+                 placeholder="Min. 8 characters" required autocomplete="new-password" />
+          <span class="form-hint">At least 8 characters</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="confirmPassword">Confirm Password</label>
+          <input class="form-control" type="password" id="confirmPassword" name="confirmPassword"
+                 placeholder="Re-enter password" required autocomplete="new-password" />
+        </div>
+        <div class="form-group mt-md">
+          <button type="submit" class="btn btn-primary btn-full" id="submitBtn">
+            Create Account
+          </button>
+        </div>
+      </form>
+
+      <div class="auth-divider">or</div>
+
+      <div class="text-center">
+        <span class="text-sm text-muted">Already have an account?</span>
+        <a href="index.html" class="btn-ghost btn-sm" style="display:inline-flex; padding:6px 10px;">
+          Sign In
+        </a>
+      </div>
+    </div>
+
+    <p style="color:rgba(255,255,255,0.55); font-size:12px; margin-top:20px; text-align:center;">
+      &copy; 2026 Mount Kenya University. All rights reserved.
+    </p>
+  </div>
+
+  <script type="module">
+    import { authApi, auth, showAlert, hideAlert } from './assets/js/api.js';
+
+    if (auth.isLoggedIn()) auth.redirectByRole();
+
+    const form      = document.getElementById('regForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const alertEl   = document.getElementById('alert');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert(alertEl);
+
+      const studentNumber   = document.getElementById('studentNumber').value.trim();
+      const fullName        = document.getElementById('fullName').value.trim();
+      const email           = document.getElementById('email').value.trim();
+      const password        = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      if (!studentNumber || !fullName || !email || !password || !confirmPassword) {
+        showAlert(alertEl, 'Please fill in all fields.', 'error'); return;
+      }
+      if (password.length < 8) {
+        showAlert(alertEl, 'Password must be at least 8 characters.', 'error'); return;
+      }
+      if (password !== confirmPassword) {
+        showAlert(alertEl, 'Passwords do not match.', 'error'); return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.classList.add('btn-loading');
+      submitBtn.textContent = 'Creating account…';
+
+      try {
+        await authApi.register({ studentNumber, fullName, email, password, confirmPassword });
+        showAlert(alertEl, 'Account created! Redirecting to login…', 'success');
+        setTimeout(() => window.location.href = 'index.html', 1800);
+      } catch (err) {
+        showAlert(alertEl, err.message || 'Registration failed. Please try again.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>

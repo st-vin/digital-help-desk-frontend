@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Login</title>
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="auth-logo-mark">MK</div>
+        <div class="auth-logo-name">MKU Helpdesk</div>
+        <div class="auth-logo-sub">Mount Kenya University — Student Support Portal</div>
+      </div>
+
+      <div id="alert" class="alert alert-error hidden" role="alert"></div>
+
+      <form id="loginForm" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="email">Email Address</label>
+          <input class="form-control" type="email" id="email" name="email"
+                 placeholder="you@mku.ac.ke" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-control" type="password" id="password" name="password"
+                 placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <div class="form-group mt-md">
+          <button type="submit" class="btn btn-primary btn-full" id="submitBtn">
+            Sign In
+          </button>
+        </div>
+      </form>
+
+      <div class="auth-divider">or</div>
+
+      <div class="text-center">
+        <span class="text-sm text-muted">New student?</span>
+        <a href="register.html" class="btn-ghost btn-sm" style="display:inline-flex; padding:6px 10px;">
+          Create Account
+        </a>
+      </div>
+    </div>
+
+    <p style="color:rgba(255,255,255,0.55); font-size:12px; margin-top:20px; text-align:center;">
+      &copy; 2025 Mount Kenya University. All rights reserved.
+    </p>
+  </div>
+
+  <script type="module">
+    import { authApi, auth, showAlert, hideAlert } from './assets/js/api.js';
+
+    // Redirect if already logged in
+    if (auth.isLoggedIn()) auth.redirectByRole();
+
+    const form      = document.getElementById('loginForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const alertEl   = document.getElementById('alert');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert(alertEl);
+
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!email || !password) {
+        showAlert(alertEl, 'Please enter your email and password.', 'error');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.classList.add('btn-loading');
+      submitBtn.textContent = 'Signing in…';
+
+      try {
+        const data = await authApi.login({ email, password });
+        auth.save(data);
+        auth.redirectByRole();
+      } catch (err) {
+        showAlert(alertEl, err.message || 'Invalid credentials. Please try again.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.textContent = 'Sign In';
+      }
+    });
+  </script>
+</body>
+</html>

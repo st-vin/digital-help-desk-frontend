@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Manage Ticket</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="page-wrapper">
+
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-brand">
+        <a href="dashboard.html" class="btn-ghost btn-sm" style="color:rgba(255,255,255,0.8); padding:6px 8px; min-height:unset;">← Queue</a>
+        <div class="brand-mark hide-mobile">MK</div>
+        <span class="top-bar-title hide-mobile">Manage Ticket</span>
+      </div>
+      <div class="top-bar-actions">
+        <span class="top-bar-user hide-mobile"><strong data-user-name></strong></span>
+        <button class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);" data-logout>Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main">
+    <div class="container" style="max-width:760px;">
+
+      <!-- Ticket header -->
+      <div id="ticketHeader">
+        <div class="spinner-wrap"><div class="spinner"></div></div>
+      </div>
+
+      <!-- Action bar -->
+      <div class="action-bar hidden" id="actionBar">
+        <div class="form-group" style="margin:0; flex:1; min-width:160px;">
+          <label class="form-label" style="text-transform:none; font-size:11px;">Update Status</label>
+          <select class="form-control" id="statusSelect" style="padding:8px 10px; font-size:13px;">
+            <option value="OPEN">Open</option>
+            <option value="IN_PROGRESS">In Progress</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="CLOSED">Closed</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" id="updateStatusBtn">Update Status</button>
+          <button class="btn btn-secondary btn-sm" id="assignSelfBtn">Assign to Me</button>
+        </div>
+      </div>
+
+      <!-- Thread -->
+      <div class="card mt-md">
+        <div class="card-header">
+          <span class="card-title">💬 Conversation Thread</span>
+          <button class="btn btn-ghost btn-sm" id="refreshThread">↻ Refresh</button>
+        </div>
+        <div class="thread-area" id="thread">
+          <div class="spinner-wrap" style="padding:var(--sp-md)"><div class="spinner"></div></div>
+        </div>
+
+        <div class="reply-form mt-md">
+          <h4>Staff Response</h4>
+          <div id="replyAlert" class="alert alert-error hidden"></div>
+          <div class="form-group">
+            <textarea class="form-control" id="replyContent" rows="4"
+                      placeholder="Type your response to the student…"></textarea>
+          </div>
+          <button class="btn btn-primary btn-sm" id="replyBtn">Send Response</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <div class="toast-container"></div>
+
+  <script type="module">
+    import {
+      auth, staffApi, renderNavUser,
+      statusBadge, priorityBadge, formatDate, formatDateShort,
+      showAlert, hideAlert, toast, getParam, isSLABreached
+    } from '../assets/js/api.js';
+
+    if (!auth.requireRole('STAFF', 'ADMIN')) throw new Error('Access denied');
+    renderNavUser();
+
+    const ticketId   = getParam('id');
+    if (!ticketId) { window.location.href = 'dashboard.html'; }
+
+    const headerEl   = document.getElementById('ticketHeader');
+    const threadEl   = document.getElementById('thread');
+    const actionBar  = document.getElementById('actionBar');
+    const statusSel  = document.getElementById('statusSelect');
+    const replyAlert = document.getElementById('replyAlert');
+    let currentTicket = null;
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function loadTicket() {
+      try {
+        const t = await staffApi.detail(ticketId);
+        currentTicket = t;
+
+        const sla = isSLABreached(t)
+          ? '<span class="sla-label" style="background:var(--error-container);padding:4px 10px;border-radius:var(--r-full);">⚠ SLA Breach — overdue 48h</span>'
+          : '';
+
+        headerEl.innerHTML = `
+          <div class="card">
+            <div class="ticket-detail-header">
+              <h2 class="ticket-detail-title">${escHtml(t.title)}</h2>
+              <div class="ticket-detail-meta">
+                ${statusBadge(t.status)}
+                ${priorityBadge(t.priority)}
+                <span>📁 ${escHtml(t.categoryName || '—')}</span>
+                <span>🎓 ${escHtml(t.studentName  || '—')}</span>
+                ${t.assignedToName
+                  ? `<span>🛠 Assigned: ${escHtml(t.assignedToName)}</span>`
+                  : '<span class="badge badge-open" style="background:#fff3cd;color:#856404;">⚡ Unassigned</span>'}
+                <span>📅 ${formatDateShort(t.createdAt)}</span>
+                ${t.resolvedAt ? `<span>✅ Resolved: ${formatDateShort(t.resolvedAt)}</span>` : ''}
+                ${sla}
+              </div>
+            </div>
+            <div class="label-md mb-sm">Student's Description</div>
+            <div class="ticket-detail-desc">${escHtml(t.description)}</div>
+          </div>`;
+
+        // Show action bar
+        actionBar.classList.remove('hidden');
+        statusSel.value = t.status;
+      } catch (err) {
+        headerEl.innerHTML = `<div class="alert alert-error">Failed to load ticket: ${err.message}</div>`;
+      }
+    }
+
+    async function loadThread() {
+      try {
+        const comments = await staffApi.comments(ticketId);
+        if (!comments || !comments.length) {
+          threadEl.innerHTML = `<div class="empty-state" style="padding:var(--sp-md);">
+            <div style="font-size:28px;">💬</div>
+            <p>No messages yet. Send the first response.</p>
+          </div>`;
+          return;
+        }
+        threadEl.innerHTML = comments.map(c => {
+          const isStudent = c.authorRole === 'STUDENT';
+          return `
+            <div class="comment-bubble ${isStudent ? 'student' : 'staff'}">
+              <div class="comment-body">${escHtml(c.content)}</div>
+              <div class="comment-meta">
+                <strong>${escHtml(c.authorName)}</strong>
+                <span style="margin-left:4px;opacity:0.7;">(${c.authorRole})</span>
+                · ${formatDate(c.createdAt)}
+              </div>
+            </div>`;
+        }).join('');
+        threadEl.scrollTop = threadEl.scrollHeight;
+      } catch (err) {
+        threadEl.innerHTML = `<div class="alert alert-error">Could not load messages.</div>`;
+      }
+    }
+
+    // Update status
+    document.getElementById('updateStatusBtn').addEventListener('click', async () => {
+      const status = statusSel.value;
+      const btn = document.getElementById('updateStatusBtn');
+      btn.disabled = true; btn.textContent = 'Updating…';
+      try {
+        await staffApi.updateStatus(ticketId, status);
+        toast(`Status updated to ${status.replace('_',' ')}`, 'success');
+        await loadTicket();
+      } catch (err) {
+        toast(err.message || 'Update failed', 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Update Status';
+      }
+    });
+
+    // Assign to self
+    document.getElementById('assignSelfBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('assignSelfBtn');
+      btn.disabled = true; btn.textContent = 'Assigning…';
+      try {
+        await staffApi.assignSelf(ticketId);
+        toast('Ticket assigned to you!', 'success');
+        await loadTicket();
+      } catch (err) {
+        toast(err.message || 'Assignment failed', 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Assign to Me';
+      }
+    });
+
+    // Reply
+    document.getElementById('replyBtn').addEventListener('click', async () => {
+      hideAlert(replyAlert);
+      const content = document.getElementById('replyContent').value.trim();
+      if (!content) { showAlert(replyAlert, 'Response cannot be empty.', 'error'); return; }
+
+      const btn = document.getElementById('replyBtn');
+      btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        await staffApi.addComment(ticketId, { content });
+        document.getElementById('replyContent').value = '';
+        toast('Response sent!', 'success');
+        await loadThread();
+      } catch (err) {
+        showAlert(replyAlert, err.message || 'Failed to send response.', 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Send Response';
+      }
+    });
+
+    document.getElementById('refreshThread').addEventListener('click', loadThread);
+
+    loadTicket();
+    loadThread();
+  </script>
+</body>
+</html>

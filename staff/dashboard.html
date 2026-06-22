@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Staff Queue</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="page-wrapper">
+
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-brand">
+        <div class="brand-mark">MK</div>
+        <span class="top-bar-title">Staff Queue</span>
+      </div>
+      <div class="top-bar-actions">
+        <span class="top-bar-user hide-mobile">
+          <strong data-user-name></strong>
+          <span style="color:var(--secondary-container); font-size:11px; margin-left:4px;">STAFF</span>
+        </span>
+        <button class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);" data-logout>Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main">
+    <div class="container">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Ticket Queue</h1>
+          <p class="page-subtitle">All student support requests</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="refreshBtn">↻ Refresh</button>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stats-grid" id="statsRow">
+        <div class="stat-card"><div class="stat-value" id="stat-open">—</div><div class="stat-label">Open</div></div>
+        <div class="stat-card accent-gold"><div class="stat-value" id="stat-progress">—</div><div class="stat-label">In Progress</div></div>
+        <div class="stat-card accent-green"><div class="stat-value" id="stat-resolved">—</div><div class="stat-label">Resolved</div></div>
+        <div class="stat-card accent-red"><div class="stat-value" id="stat-sla">—</div><div class="stat-label">SLA Breaches</div></div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filter-bar">
+        <select id="filterStatus" title="Filter by Status">
+          <option value="">All Statuses</option>
+          <option value="OPEN">Open</option>
+          <option value="IN_PROGRESS">In Progress</option>
+          <option value="RESOLVED">Resolved</option>
+          <option value="CLOSED">Closed</option>
+        </select>
+        <select id="filterPriority" title="Filter by Priority">
+          <option value="">All Priorities</option>
+          <option value="LOW">Low</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HIGH">High</option>
+          <option value="CRITICAL">Critical</option>
+        </select>
+        <select id="filterCategory" title="Filter by Category">
+          <option value="">All Categories</option>
+        </select>
+      </div>
+
+      <!-- Ticket list -->
+      <div id="ticketList">
+        <div class="spinner-wrap"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-container"></div>
+
+  <script type="module">
+    import {
+      auth, staffApi, ticketApi, renderNavUser,
+      statusBadge, priorityBadge, formatDateShort, isSLABreached
+    } from '../assets/js/api.js';
+
+    if (!auth.requireRole('STAFF', 'ADMIN')) throw new Error('Access denied');
+    renderNavUser();
+
+    let allTickets = [];
+
+    const listEl        = document.getElementById('ticketList');
+    const filterStatus  = document.getElementById('filterStatus');
+    const filterPriority= document.getElementById('filterPriority');
+    const filterCat     = document.getElementById('filterCategory');
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function updateStats(tickets) {
+      document.getElementById('stat-open').textContent     = tickets.filter(t => t.status === 'OPEN').length;
+      document.getElementById('stat-progress').textContent = tickets.filter(t => t.status === 'IN_PROGRESS').length;
+      document.getElementById('stat-resolved').textContent = tickets.filter(t => t.status === 'RESOLVED').length;
+      document.getElementById('stat-sla').textContent      = tickets.filter(isSLABreached).length;
+    }
+
+    function render() {
+      const status   = filterStatus.value;
+      const priority = filterPriority.value;
+      const catId    = filterCat.value;
+
+      let tickets = allTickets;
+      if (status)   tickets = tickets.filter(t => t.status   === status);
+      if (priority) tickets = tickets.filter(t => t.priority === priority);
+      if (catId)    tickets = tickets.filter(t => String(t.categoryId) === catId ||
+                                                   t.categoryName === catId);
+
+      if (!tickets.length) {
+        listEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🎉</div>
+            <h3>Queue is clear!</h3>
+            <p>No tickets match the current filters.</p>
+          </div>`;
+        return;
+      }
+
+      listEl.innerHTML = `<div class="ticket-list">${tickets.map(ticketRow).join('')}</div>`;
+    }
+
+    function ticketRow(t) {
+      const sla = isSLABreached(t) ? 'sla-breach' : '';
+      return `
+        <a href="ticket.html?id=${t.id}" class="ticket-item ${sla}">
+          <div class="ticket-item-top">
+            <span class="ticket-item-title">${escHtml(t.title)}</span>
+            <span class="ticket-item-chevron">›</span>
+          </div>
+          <div class="ticket-item-meta">
+            ${statusBadge(t.status)}
+            ${priorityBadge(t.priority)}
+            <span>📁 ${escHtml(t.categoryName || '—')}</span>
+            <span>👤 ${escHtml(t.studentName  || '—')}</span>
+            ${t.assignedToName ? `<span>🛠 ${escHtml(t.assignedToName)}</span>` : '<span class="text-muted">Unassigned</span>'}
+            <span>${formatDateShort(t.createdAt)}</span>
+            ${isSLABreached(t) ? '<span class="sla-label">⚠ SLA Breach</span>' : ''}
+          </div>
+        </a>`;
+    }
+
+    async function loadTickets() {
+      listEl.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+      try {
+        const data = await staffApi.allTickets({});
+        allTickets = data || [];
+        updateStats(allTickets);
+
+        // Populate category filter from data
+        const cats = [...new Map(allTickets.map(t => [t.categoryName, t.categoryName])).entries()];
+        filterCat.innerHTML = '<option value="">All Categories</option>';
+        cats.forEach(([name]) => {
+          if (name) filterCat.innerHTML += `<option value="${escHtml(name)}">${escHtml(name)}</option>`;
+        });
+
+        render();
+      } catch (err) {
+        listEl.innerHTML = `<div class="alert alert-error">Failed to load tickets: ${err.message}</div>`;
+      }
+    }
+
+    filterStatus.addEventListener('change', render);
+    filterPriority.addEventListener('change', render);
+    filterCat.addEventListener('change', render);
+    document.getElementById('refreshBtn').addEventListener('click', loadTickets);
+
+    loadTickets();
+  </script>
+</body>
+</html>

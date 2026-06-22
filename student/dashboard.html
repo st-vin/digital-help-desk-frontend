@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — My Tickets</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="page-wrapper">
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-brand">
+        <div class="brand-mark">MK</div>
+        <span class="top-bar-title hide-mobile">MKU Helpdesk</span>
+      </div>
+      <div class="top-bar-actions">
+        <span class="top-bar-user">
+          Hello, <strong data-user-name></strong>
+        </span>
+        <button class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);" data-logout>
+          Sign Out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="page-main">
+    <div class="container">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">My Tickets</h1>
+          <p class="page-subtitle">Track your support requests</p>
+        </div>
+        <a href="submit.html" class="btn btn-primary btn-sm">
+          + New Ticket
+        </a>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs" id="statusTabs">
+        <button class="tab-btn active" data-status="">All</button>
+        <button class="tab-btn" data-status="OPEN">Open</button>
+        <button class="tab-btn" data-status="IN_PROGRESS">In Progress</button>
+        <button class="tab-btn" data-status="RESOLVED">Resolved</button>
+        <button class="tab-btn" data-status="CLOSED">Closed</button>
+      </div>
+
+      <!-- Ticket List -->
+      <div id="ticketList">
+        <div class="spinner-wrap"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- FAB for mobile -->
+  <a href="submit.html" class="fab show-mobile" title="New Ticket">+</a>
+
+  <!-- Toast -->
+  <div class="toast-container"></div>
+
+  <script type="module">
+    import { auth, ticketApi, renderNavUser, statusBadge, priorityBadge, formatDateShort, isSLABreached } from '../assets/js/api.js';
+
+    if (!auth.requireRole('STUDENT')) throw new Error('Access denied');
+    renderNavUser();
+
+    let allTickets = [];
+    let activeStatus = '';
+
+    const listEl = document.getElementById('ticketList');
+    const tabs   = document.querySelectorAll('.tab-btn');
+
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        activeStatus = btn.dataset.status;
+        render();
+      });
+    });
+
+    function render() {
+      const tickets = activeStatus
+        ? allTickets.filter(t => t.status === activeStatus)
+        : allTickets;
+
+      if (!tickets.length) {
+        listEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <h3>${activeStatus ? 'No ' + activeStatus.replace('_',' ').toLowerCase() + ' tickets' : 'No tickets yet'}</h3>
+            <p>${activeStatus ? 'Nothing in this category.' : 'Submit your first support request below.'}</p>
+            ${!activeStatus ? '<a href="submit.html" class="btn btn-primary mt-md">Submit a Ticket</a>' : ''}
+          </div>`;
+        return;
+      }
+
+      listEl.innerHTML = `<div class="ticket-list">${tickets.map(ticketCard).join('')}</div>`;
+    }
+
+    function ticketCard(t) {
+      const sla = isSLABreached(t) ? 'sla-breach' : '';
+      return `
+        <a href="ticket.html?id=${t.id}" class="ticket-item ${sla}">
+          <div class="ticket-item-top">
+            <span class="ticket-item-title">${escHtml(t.title)}</span>
+            <span class="ticket-item-chevron">›</span>
+          </div>
+          <div class="ticket-item-meta">
+            ${statusBadge(t.status)}
+            ${priorityBadge(t.priority)}
+            <span>${escHtml(t.categoryName || '—')}</span>
+            <span>${formatDateShort(t.createdAt)}</span>
+            ${isSLABreached(t) ? '<span class="sla-label">⚠ SLA Breach</span>' : ''}
+          </div>
+        </a>`;
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // Load tickets
+    ticketApi.myTickets()
+      .then(data => { allTickets = data || []; render(); })
+      .catch(err => {
+        listEl.innerHTML = `<div class="alert alert-error">Failed to load tickets: ${err.message}</div>`;
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Ticket Detail</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="page-wrapper">
+
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-brand">
+        <a href="dashboard.html" class="btn-ghost btn-sm" style="color:rgba(255,255,255,0.8); padding:6px 8px; min-height:unset;">← Back</a>
+        <div class="brand-mark hide-mobile">MK</div>
+        <span class="top-bar-title hide-mobile">Ticket Detail</span>
+      </div>
+      <div class="top-bar-actions">
+        <span class="top-bar-user hide-mobile"><strong data-user-name></strong></span>
+        <button class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);" data-logout>Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main">
+    <div class="container" style="max-width:720px;">
+      <!-- Ticket header -->
+      <div id="ticketHeader">
+        <div class="spinner-wrap"><div class="spinner"></div></div>
+      </div>
+
+      <!-- Conversation thread -->
+      <div class="card mt-md">
+        <div class="card-header">
+          <span class="card-title">💬 Conversation</span>
+          <button class="btn btn-ghost btn-sm" id="refreshThread">↻ Refresh</button>
+        </div>
+        <div class="thread-area" id="thread">
+          <div class="spinner-wrap" style="padding:var(--sp-md)"><div class="spinner"></div></div>
+        </div>
+
+        <!-- Reply form -->
+        <div class="reply-form mt-md" id="replyForm">
+          <h4>Add a Reply</h4>
+          <div id="replyAlert" class="alert alert-error hidden"></div>
+          <div class="form-group">
+            <textarea class="form-control" id="replyContent" rows="3"
+                      placeholder="Type your message…"></textarea>
+          </div>
+          <div class="flex gap-sm" style="flex-wrap:wrap; margin-top:8px;">
+            <button class="btn btn-primary btn-sm" id="replyBtn">Send Reply</button>
+            <button class="btn btn-danger btn-sm hidden" id="closeBtn">Close Ticket</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-container"></div>
+
+  <script type="module">
+    import {
+      auth, ticketApi, renderNavUser,
+      statusBadge, priorityBadge, formatDate, formatDateShort,
+      showAlert, hideAlert, toast, getParam, isSLABreached
+    } from '../assets/js/api.js';
+
+    if (!auth.requireRole('STUDENT')) throw new Error('Access denied');
+    renderNavUser();
+
+    const ticketId = getParam('id');
+    if (!ticketId) { window.location.href = 'dashboard.html'; }
+
+    const headerEl  = document.getElementById('ticketHeader');
+    const threadEl  = document.getElementById('thread');
+    const replyBtn  = document.getElementById('replyBtn');
+    const closeBtn  = document.getElementById('closeBtn');
+    const replyAlert = document.getElementById('replyAlert');
+    let currentTicket = null;
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function loadTicket() {
+      try {
+        const t = await ticketApi.detail(ticketId);
+        currentTicket = t;
+
+        const sla = isSLABreached(t) ? '<span class="sla-label">⚠ SLA Breach — overdue</span>' : '';
+        headerEl.innerHTML = `
+          <div class="card">
+            <div class="ticket-detail-header">
+              <h2 class="ticket-detail-title">${escHtml(t.title)}</h2>
+              <div class="ticket-detail-meta">
+                ${statusBadge(t.status)}
+                ${priorityBadge(t.priority)}
+                <span>📁 ${escHtml(t.categoryName || '—')}</span>
+                <span>📅 ${formatDateShort(t.createdAt)}</span>
+                ${t.assignedToName ? `<span>👤 ${escHtml(t.assignedToName)}</span>` : '<span class="text-muted">Unassigned</span>'}
+                ${sla}
+              </div>
+            </div>
+            <div class="label-md mb-sm">Description</div>
+            <div class="ticket-detail-desc">${escHtml(t.description)}</div>
+          </div>`;
+
+        // Show close button only if ticket is not already closed/resolved
+        if (!['RESOLVED','CLOSED'].includes(t.status)) {
+          closeBtn.classList.remove('hidden');
+        } else {
+          document.getElementById('replyForm').style.opacity = '0.6';
+          document.getElementById('replyContent').disabled = true;
+          replyBtn.disabled = true;
+          replyBtn.textContent = 'Ticket Closed';
+        }
+      } catch (err) {
+        headerEl.innerHTML = `<div class="alert alert-error">Failed to load ticket: ${err.message}</div>`;
+      }
+    }
+
+    async function loadThread() {
+      try {
+        const comments = await ticketApi.comments(ticketId);
+        if (!comments || !comments.length) {
+          threadEl.innerHTML = `<div class="empty-state" style="padding:var(--sp-md);">
+            <div style="font-size:32px;">💬</div>
+            <p>No messages yet. Start the conversation below.</p>
+          </div>`;
+          return;
+        }
+        threadEl.innerHTML = comments.map(c => {
+          const isStudent = c.authorRole === 'STUDENT';
+          return `
+            <div class="comment-bubble ${isStudent ? 'student' : 'staff'}">
+              <div class="comment-body">${escHtml(c.content)}</div>
+              <div class="comment-meta">${escHtml(c.authorName)} · ${formatDate(c.createdAt)}</div>
+            </div>`;
+        }).join('');
+        threadEl.scrollTop = threadEl.scrollHeight;
+      } catch (err) {
+        threadEl.innerHTML = `<div class="alert alert-error">Could not load messages.</div>`;
+      }
+    }
+
+    replyBtn.addEventListener('click', async () => {
+      hideAlert(replyAlert);
+      const content = document.getElementById('replyContent').value.trim();
+      if (!content) { showAlert(replyAlert, 'Message cannot be empty.', 'error'); return; }
+
+      replyBtn.disabled = true;
+      replyBtn.textContent = 'Sending…';
+      try {
+        await ticketApi.addComment(ticketId, { content });
+        document.getElementById('replyContent').value = '';
+        toast('Reply sent!', 'success');
+        await loadThread();
+      } catch (err) {
+        showAlert(replyAlert, err.message || 'Failed to send reply.', 'error');
+      } finally {
+        replyBtn.disabled = false;
+        replyBtn.textContent = 'Send Reply';
+      }
+    });
+
+    closeBtn.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to close this ticket?')) return;
+      try {
+        await ticketApi.close(ticketId);
+        toast('Ticket closed.', 'success');
+        await loadTicket();
+      } catch (err) {
+        toast(err.message || 'Failed to close ticket.', 'error');
+      }
+    });
+
+    document.getElementById('refreshThread').addEventListener('click', loadThread);
+
+    loadTicket();
+    loadThread();
+  </script>
+</body>
+</html>

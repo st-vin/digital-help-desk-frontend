@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Submit Ticket</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body class="page-wrapper">
+
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="top-bar-brand">
+        <a href="dashboard.html" class="btn-ghost btn-sm" style="color:rgba(255,255,255,0.8); padding:6px 8px; min-height:unset;">← Back</a>
+        <div class="brand-mark hide-mobile">MK</div>
+        <span class="top-bar-title hide-mobile">Submit a Ticket</span>
+      </div>
+      <div class="top-bar-actions">
+        <span class="top-bar-user hide-mobile"><strong data-user-name></strong></span>
+        <button class="btn btn-ghost btn-sm" style="color:rgba(255,255,255,0.8);" data-logout>Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-main">
+    <div class="container" style="max-width:640px;">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">New Support Request</h1>
+          <p class="page-subtitle">Describe your issue and we'll get back to you</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div id="alert" class="alert alert-error hidden"></div>
+
+        <form id="submitForm" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="title">Subject <span style="color:var(--error)">*</span></label>
+            <input class="form-control" type="text" id="title" name="title"
+                   placeholder="Brief description of the issue" maxlength="200" required />
+            <span class="form-hint">Max 200 characters</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="categoryId">Category <span style="color:var(--error)">*</span></label>
+            <select class="form-control" id="categoryId" name="categoryId" required>
+              <option value="">Select a category…</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="priority">Priority <span style="color:var(--error)">*</span></label>
+            <select class="form-control" id="priority" name="priority" required>
+              <option value="">Select priority…</option>
+              <option value="LOW">Low — General enquiry</option>
+              <option value="MEDIUM">Medium — Affects coursework</option>
+              <option value="HIGH">High — Urgent issue</option>
+              <option value="CRITICAL">Critical — System failure / exam</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="description">Description <span style="color:var(--error)">*</span></label>
+            <textarea class="form-control" id="description" name="description"
+                      placeholder="Please describe your issue in detail (min. 20 characters)…"
+                      rows="6" minlength="20" required></textarea>
+            <span class="form-hint">Minimum 20 characters. Include any relevant details, error messages or screenshots.</span>
+          </div>
+
+          <div class="flex gap-sm mt-md" style="flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary" id="submitBtn">Submit Ticket</button>
+            <a href="dashboard.html" class="btn btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { auth, ticketApi, renderNavUser, showAlert, hideAlert, toast } from '../assets/js/api.js';
+
+    if (!auth.requireRole('STUDENT')) throw new Error('Access denied');
+    renderNavUser();
+
+    const alertEl   = document.getElementById('alert');
+    const submitBtn = document.getElementById('submitBtn');
+    const catSelect = document.getElementById('categoryId');
+
+    // Load categories
+    ticketApi.categories()
+      .then(cats => {
+        cats.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.name;
+          catSelect.appendChild(opt);
+        });
+      })
+      .catch(() => {
+        const opt = document.createElement('option');
+        opt.disabled = true;
+        opt.textContent = 'Failed to load categories';
+        catSelect.appendChild(opt);
+      });
+
+    document.getElementById('submitForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert(alertEl);
+
+      const title       = document.getElementById('title').value.trim();
+      const categoryId  = Number(document.getElementById('categoryId').value);
+      const priority    = document.getElementById('priority').value;
+      const description = document.getElementById('description').value.trim();
+
+      if (!title || !categoryId || !priority || !description) {
+        showAlert(alertEl, 'Please fill in all required fields.', 'error'); return;
+      }
+      if (description.length < 20) {
+        showAlert(alertEl, 'Description must be at least 20 characters.', 'error'); return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.classList.add('btn-loading');
+      submitBtn.textContent = 'Submitting…';
+
+      try {
+        const ticket = await ticketApi.submit({ title, categoryId, priority, description });
+        toast('Ticket submitted successfully!', 'success');
+        setTimeout(() => window.location.href = `ticket.html?id=${ticket.id}`, 800);
+      } catch (err) {
+        showAlert(alertEl, err.message || 'Failed to submit ticket.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.textContent = 'Submit Ticket';
+      }
+    });
+  </script>
+</body>
+</html>

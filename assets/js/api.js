@@ -5,16 +5,20 @@
 
 const API_BASE = 'http://localhost:7777';
 
+function normalizeRole(role) {
+  return role === 'ICT_STAFF' ? 'STAFF' : role || '';
+}
+
 // ── Auth storage helpers ──────────────────────────────────────
 export const auth = {
   save(data) {
     localStorage.setItem('mku_token',    data.token    || '');
-    localStorage.setItem('mku_role',     data.role     || '');
+    localStorage.setItem('mku_role',     normalizeRole(data.role));
     localStorage.setItem('mku_name',     data.fullName || '');
     localStorage.setItem('mku_userId',   String(data.userId || ''));
   },
   token()  { return localStorage.getItem('mku_token')  || ''; },
-  role()   { return localStorage.getItem('mku_role')   || ''; },
+  role()   { return normalizeRole(localStorage.getItem('mku_role') || ''); },
   name()   { return localStorage.getItem('mku_name')   || ''; },
   userId() { return localStorage.getItem('mku_userId') || ''; },
   clear()  {

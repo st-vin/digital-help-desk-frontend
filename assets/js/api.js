@@ -9,6 +9,68 @@ function normalizeRole(role) {
   return role === 'ICT_STAFF' ? 'STAFF' : role || '';
 }
 
+function normalizeMessage(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    return value.message || value.error || value.detail || value.title || JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function normalizeErrorMessage(err, fallback = 'Request failed.') {
+  return normalizeMessage(err?.message || err?.error || err?.detail || err) || fallback;
+}
+
+async function readResponseBody(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return text;
+  }
+}
+
+function createHttpError(response, body) {
+  const err = new Error(normalizeMessage(body, `HTTP ${response.status}`));
+  err.status = response.status;
+  err.body = body;
+  return err;
+}
+
+export const authCopy = {
+  registerCheckEmail: 'Your account has been created but is not yet verified. Check your email for the verification link before logging in.',
+  verifySuccess: 'Email verified successfully. You can now log in.',
+  loginVerifyRequired: 'Please verify your email address before logging in.',
+  loginInvalid: 'Invalid credentials. Please try again.',
+  resendNeutral: 'If an unverified account exists for that email, a new link has been sent.',
+  verifyInvalid: 'This verification link is invalid.',
+  verifyExpired: 'This verification link has expired.',
+  verifyUsed: 'This verification link has already been used.',
+};
+
+export function isEmailVerificationRequiredError(err) {
+  const status = err?.status;
+  const msg = normalizeErrorMessage(err).toLowerCase();
+  return status === 403 && (
+    msg.includes('verify your email') ||
+    msg.includes('email not verified') ||
+    msg.includes('not verified')
+  );
+}
+
+export function getVerificationFailureMessage(err) {
+  const msg = normalizeErrorMessage(err, 'We could not verify your email address.');
+  const lower = msg.toLowerCase();
+
+  if (lower.includes('expired')) return authCopy.verifyExpired;
+  if (lower.includes('already') && lower.includes('used')) return authCopy.verifyUsed;
+  if (lower.includes('invalid')) return authCopy.verifyInvalid;
+
+  return msg;
+}
+
 // ── Auth storage helpers ──────────────────────────────────────
 export const auth = {
   save(data) {
@@ -74,7 +136,7 @@ function rootPath() {
  *   options – standard fetch options + optional `token` override
  */
 export async function apiFetch(path, options = {}) {
-  const { token: tokenOverride, ...fetchOpts } = options;
+  const { token: tokenOverride, skipAuthRedirect = false, ...fetchOpts } = options;
   const token = tokenOverride || auth.token();
 
   const headers = {
@@ -88,31 +150,33 @@ export async function apiFetch(path, options = {}) {
     headers,
   });
 
-  if (response.status === 401 || response.status === 403) {
-    auth.clear();
-    window.location.href = rootPath() + 'index.html';
-    throw new Error('Unauthorized');
-  }
+  const body = await readResponseBody(response);
 
   if (!response.ok) {
-    let msg = `HTTP ${response.status}`;
-    try {
-      const err = await response.json();
-      msg = err.message || err.error || JSON.stringify(err);
-    } catch (_) { /* body may be empty */ }
-    throw new Error(msg);
+    const err = createHttpError(response, body);
+
+    if (!skipAuthRedirect && (response.status === 401 || response.status === 403)) {
+      auth.clear();
+      window.location.href = rootPath() + 'index.html';
+      throw err;
+    }
+
+    throw err;
   }
 
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
+  return body;
+}
+
+function requestJson(path, options = {}) {
+  return apiFetch(path, options);
 }
 
 // ── Convenience wrappers ──────────────────────────────────────
 export const api = {
-  get:    (path, opts)       => apiFetch(path, { method: 'GET', ...opts }),
-  post:   (path, body, opts) => apiFetch(path, { method: 'POST',  body: JSON.stringify(body), ...opts }),
-  put:    (path, body, opts) => apiFetch(path, { method: 'PUT',   body: JSON.stringify(body), ...opts }),
-  delete: (path, opts)       => apiFetch(path, { method: 'DELETE', ...opts }),
+  get:    (path, opts)       => requestJson(path, { method: 'GET', ...opts }),
+  post:   (path, body, opts) => requestJson(path, { method: 'POST',  body: JSON.stringify(body), ...opts }),
+  put:    (path, body, opts) => requestJson(path, { method: 'PUT',   body: JSON.stringify(body), ...opts }),
+  delete: (path, opts)       => requestJson(path, { method: 'DELETE', ...opts }),
 };
 
 // ── Domain helpers ────────────────────────────────────────────
@@ -143,8 +207,25 @@ export const adminApi = {
 };
 
 export const authApi = {
-  login:    (data) => api.post('/api/v1/auth/login', data),
-  register: (data) => api.post('/api/v1/auth/register', data),
+  login: (data) => requestJson('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    skipAuthRedirect: true,
+  }),
+  register: (data) => requestJson('/api/v1/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    skipAuthRedirect: true,
+  }),
+  verifyEmail: (token) => requestJson(`/api/v1/auth/verify-email?token=${encodeURIComponent(token)}`, {
+    method: 'GET',
+    skipAuthRedirect: true,
+  }),
+  resendVerification: (email) => requestJson('/api/v1/auth/resend-verification', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+    skipAuthRedirect: true,
+  }),
 };
 
 // ── UI Utilities ──────────────────────────────────────────────

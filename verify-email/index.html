@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Verify Email</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="auth-logo-mark">MK</div>
+        <div class="auth-logo-name">Email Verification</div>
+        <div class="auth-logo-sub">We are checking your verification link</div>
+      </div>
+
+      <div class="auth-status loading" id="statusBlock">
+        <div class="auth-status-icon" id="statusIcon">…</div>
+        <div class="auth-status-title" id="statusTitle">Verifying your email</div>
+        <div class="auth-status-copy" id="statusCopy">Please wait while we confirm your account.</div>
+      </div>
+
+      <div id="alert" class="alert alert-error hidden" role="alert"></div>
+
+      <div class="auth-help-box hidden" id="resendBox">
+        <div class="label-md" style="margin-bottom:6px;">Need a new verification link?</div>
+        <form id="resendForm" class="auth-inline-form" novalidate>
+          <input class="form-control" type="email" id="email" placeholder="you@mku.ac.ke" autocomplete="email" />
+          <button type="submit" class="btn btn-secondary" id="resendBtn">Resend</button>
+        </form>
+        <div class="auth-note">If an unverified account exists for that email, a new link has been sent.</div>
+      </div>
+
+      <div class="auth-status-actions">
+        <a href="../index.html" class="btn btn-primary" id="loginBtn">Go to Login</a>
+        <a href="../register.html" class="btn btn-secondary" id="registerBtn">Create Account</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      authApi,
+      authCopy,
+      getVerificationFailureMessage,
+      showAlert
+    } from '../assets/js/api.js';
+
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token') || '';
+    const emailFromQuery = url.searchParams.get('email') || '';
+
+    if (token) {
+      url.searchParams.delete('token');
+      history.replaceState({}, '', `${url.pathname}${url.search ? url.search : ''}`);
+    }
+
+    const statusBlock = document.getElementById('statusBlock');
+    const statusIcon = document.getElementById('statusIcon');
+    const statusTitle = document.getElementById('statusTitle');
+    const statusCopy = document.getElementById('statusCopy');
+    const alertEl = document.getElementById('alert');
+    const resendBox = document.getElementById('resendBox');
+    const resendForm = document.getElementById('resendForm');
+    const resendEmail = document.getElementById('email');
+    const resendBtn = document.getElementById('resendBtn');
+
+    if (emailFromQuery) {
+      resendEmail.value = emailFromQuery;
+    }
+
+    function setStatus(kind, icon, title, copy) {
+      statusBlock.className = `auth-status ${kind}`;
+      statusIcon.textContent = icon;
+      statusTitle.textContent = title;
+      statusCopy.textContent = copy;
+    }
+
+    function setResendLoading(isLoading) {
+      resendBtn.disabled = isLoading;
+      resendBtn.classList.toggle('btn-loading', isLoading);
+      resendBtn.textContent = isLoading ? 'Sending…' : 'Resend';
+    }
+
+    async function verifyToken() {
+      if (!token) {
+        setStatus(
+          'error',
+          '!',
+          'Verification link missing',
+          'Open the verification email again, or request a new link below.'
+        );
+        resendBox.classList.remove('hidden');
+        showAlert(alertEl, 'No verification token was found in the link.', 'error');
+        return;
+      }
+
+      try {
+        await authApi.verifyEmail(token);
+        setStatus('success', '✓', 'Email verified successfully', authCopy.verifySuccess);
+      } catch (err) {
+        setStatus('error', '!', 'Verification failed', getVerificationFailureMessage(err));
+        resendBox.classList.remove('hidden');
+        showAlert(alertEl, getVerificationFailureMessage(err), 'error');
+      }
+    }
+
+    resendForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = resendEmail.value.trim();
+      if (!email) {
+        showAlert(alertEl, 'Enter the email address you used to register.', 'error');
+        return;
+      }
+
+      setResendLoading(true);
+      try {
+        await authApi.resendVerification(email);
+      } catch (_) {
+        // Keep the response neutral.
+      } finally {
+        setResendLoading(false);
+        showAlert(alertEl, authCopy.resendNeutral, 'info');
+      }
+    });
+
+    verifyToken();
+  </script>
+</body>
+</html>

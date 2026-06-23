@@ -37,6 +37,16 @@
 
       <div class="auth-divider">or</div>
 
+      <div class="auth-help-box">
+        <div class="label-md" style="margin-bottom:6px;">Need a new verification link?</div>
+        <form id="resendForm" class="auth-inline-form" novalidate>
+          <input class="form-control" type="email" id="resendEmail"
+                 placeholder="you@mku.ac.ke" autocomplete="email" />
+          <button type="submit" class="btn btn-secondary" id="resendBtn">Resend</button>
+        </form>
+        <div class="auth-note">If an unverified account exists for that email, a new link has been sent.</div>
+      </div>
+
       <div class="text-center">
         <span class="text-sm text-muted">New student?</span>
         <a href="register.html" class="btn-ghost btn-sm" style="display:inline-flex; padding:6px 10px;">
@@ -51,7 +61,14 @@
   </div>
 
   <script type="module">
-    import { authApi, auth, showAlert, hideAlert } from './assets/js/api.js';
+    import {
+      authApi,
+      auth,
+      showAlert,
+      hideAlert,
+      authCopy,
+      isEmailVerificationRequiredError
+    } from './assets/js/api.js';
 
     // Redirect if already logged in
     if (auth.isLoggedIn()) auth.redirectByRole();
@@ -59,6 +76,21 @@
     const form      = document.getElementById('loginForm');
     const submitBtn = document.getElementById('submitBtn');
     const alertEl   = document.getElementById('alert');
+    const resendForm = document.getElementById('resendForm');
+    const resendEmail = document.getElementById('resendEmail');
+    const resendBtn = document.getElementById('resendBtn');
+
+    function setSubmitLoading(isLoading) {
+      submitBtn.disabled = isLoading;
+      submitBtn.classList.toggle('btn-loading', isLoading);
+      submitBtn.textContent = isLoading ? 'Signing in…' : 'Sign In';
+    }
+
+    function setResendLoading(isLoading) {
+      resendBtn.disabled = isLoading;
+      resendBtn.classList.toggle('btn-loading', isLoading);
+      resendBtn.textContent = isLoading ? 'Sending…' : 'Resend';
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -66,25 +98,48 @@
 
       const email    = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
+      resendEmail.value = email;
 
       if (!email || !password) {
         showAlert(alertEl, 'Please enter your email and password.', 'error');
         return;
       }
 
-      submitBtn.disabled = true;
-      submitBtn.classList.add('btn-loading');
-      submitBtn.textContent = 'Signing in…';
+      setSubmitLoading(true);
 
       try {
         const data = await authApi.login({ email, password });
         auth.save(data);
         auth.redirectByRole();
       } catch (err) {
-        showAlert(alertEl, err.message || 'Invalid credentials. Please try again.', 'error');
-        submitBtn.disabled = false;
-        submitBtn.classList.remove('btn-loading');
-        submitBtn.textContent = 'Sign In';
+        if (isEmailVerificationRequiredError(err)) {
+          showAlert(alertEl, authCopy.loginVerifyRequired, 'warning');
+          resendEmail.value = email;
+        } else {
+          showAlert(alertEl, authCopy.loginInvalid, 'error');
+        }
+        setSubmitLoading(false);
+      }
+    });
+
+    resendForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = resendEmail.value.trim();
+      if (!email) {
+        showAlert(alertEl, 'Enter the email address you used to register.', 'error');
+        return;
+      }
+
+      hideAlert(alertEl);
+      setResendLoading(true);
+
+      try {
+        await authApi.resendVerification(email);
+      } catch (_) {
+        // Intentionally ignore account-existence details.
+      } finally {
+        setResendLoading(false);
+        showAlert(alertEl, authCopy.resendNeutral, 'info');
       }
     });
   </script>

@@ -101,8 +101,7 @@
 
       try {
         await authApi.register({ studentNumber, fullName, email, password, confirmPassword });
-        showAlert(alertEl, 'Account created! Redirecting to login…', 'success');
-        setTimeout(() => window.location.href = 'index.html', 1800);
+        window.location.href = `check-email.html?email=${encodeURIComponent(email)}`;
       } catch (err) {
         showAlert(alertEl, err.message || 'Registration failed. Please try again.', 'error');
         submitBtn.disabled = false;

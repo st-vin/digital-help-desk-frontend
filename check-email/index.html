@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MKU Helpdesk — Check Email</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="auth-logo-mark">MK</div>
+        <div class="auth-logo-name">Verify Your Email</div>
+        <div class="auth-logo-sub">Your account is created but not yet active</div>
+      </div>
+
+      <div class="auth-status success">
+        <div class="auth-status-icon">✓</div>
+        <div class="auth-status-title">Check your email</div>
+        <div class="auth-status-copy">
+          <span id="registerMessage"></span>
+        </div>
+        <div class="auth-chip" id="emailChip"></div>
+      </div>
+
+      <div id="alert" class="alert alert-info hidden" role="alert"></div>
+
+      <div class="auth-help-box">
+        <div class="label-md" style="margin-bottom:6px;">Need another link?</div>
+        <form id="resendForm" class="auth-inline-form" novalidate>
+          <input class="form-control" type="email" id="email" placeholder="you@mku.ac.ke" autocomplete="email" />
+          <button type="submit" class="btn btn-secondary" id="resendBtn">Resend</button>
+        </form>
+        <div class="auth-note">If an unverified account exists for that email, a new link has been sent.</div>
+      </div>
+
+      <div class="auth-stack">
+        <a href="../index.html" class="btn btn-primary btn-full">Go to Login</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { authApi, authCopy, showAlert } from '../assets/js/api.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email') || '';
+
+    const emailChip = document.getElementById('emailChip');
+    const registerMessage = document.getElementById('registerMessage');
+    const resendForm = document.getElementById('resendForm');
+    const resendEmail = document.getElementById('email');
+    const resendBtn = document.getElementById('resendBtn');
+    const alertEl = document.getElementById('alert');
+
+    registerMessage.textContent = authCopy.registerCheckEmail;
+    if (email) {
+      emailChip.textContent = email;
+      resendEmail.value = email;
+    } else {
+      emailChip.remove();
+    }
+
+    resendForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const value = resendEmail.value.trim();
+      if (!value) {
+        showAlert(alertEl, 'Enter the email address you used to register.', 'error');
+        return;
+      }
+
+      resendBtn.disabled = true;
+      resendBtn.classList.add('btn-loading');
+      resendBtn.textContent = 'Sending…';
+
+      try {
+        await authApi.resendVerification(value);
+      } catch (_) {
+        // Keep the response neutral.
+      } finally {
+        resendBtn.disabled = false;
+        resendBtn.classList.remove('btn-loading');
+        resendBtn.textContent = 'Resend';
+        showAlert(alertEl, authCopy.resendNeutral, 'info');
+      }
+    });
+  </script>
+</body>
+</html>

@@ -10,7 +10,7 @@
   <div class="auth-page">
     <div class="auth-card" style="max-width:460px;">
       <div class="auth-logo">
-        <div class="auth-logo-mark">MK</div>
+        <img class="auth-logo-mark auth-logo-mark-image" src="assets/images/mku-wordmark.jpeg" alt="Mount Kenya University logo" />
         <div class="auth-logo-name">Student Registration</div>
         <div class="auth-logo-sub">Create your helpdesk account</div>
       </div>
@@ -67,9 +67,10 @@
   </div>
 
   <script type="module">
-    import { authApi, auth, showAlert, hideAlert } from './assets/js/api.js';
+    import { authApi, auth, showAlert, hideAlert, setupPasswordToggles } from './assets/js/api.js';
 
     if (auth.isLoggedIn()) auth.redirectByRole();
+    setupPasswordToggles();
 
     const form      = document.getElementById('regForm');
     const submitBtn = document.getElementById('submitBtn');

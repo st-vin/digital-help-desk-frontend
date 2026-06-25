@@ -12,7 +12,7 @@
     <div class="top-bar-inner">
       <div class="top-bar-brand">
         <a href="dashboard.html" class="btn-ghost btn-sm" style="color:rgba(255,255,255,0.8); padding:6px 8px; min-height:unset;">← Analytics</a>
-        <div class="brand-mark hide-mobile">MK</div>
+        <img class="brand-mark brand-mark-image hide-mobile" src="../assets/images/mku-wordmark.jpeg" alt="Mount Kenya University logo" />
         <span class="top-bar-title hide-mobile">User Management</span>
       </div>
       <div class="top-bar-actions">
@@ -103,10 +103,11 @@
   <div class="toast-container"></div>
 
   <script type="module">
-    import { auth, adminApi, renderNavUser, showAlert, hideAlert, toast } from '../assets/js/api.js';
+    import { auth, adminApi, renderNavUser, showAlert, hideAlert, toast, setupPasswordToggles } from '../assets/js/api.js';
 
     if (!auth.requireRole('ADMIN')) throw new Error('Access denied');
     renderNavUser();
+    setupPasswordToggles();
 
     const staffBody   = document.getElementById('staffBody');
     const alertArea   = document.getElementById('alertArea');

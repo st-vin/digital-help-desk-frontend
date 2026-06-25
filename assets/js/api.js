@@ -328,3 +328,74 @@ export function isSLABreached(ticket) {
 export function getParam(name) {
   return new URLSearchParams(window.location.search).get(name);
 }
+
+function passwordToggleIcon(isVisible) {
+  return isVisible
+    ? `
+      <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+        <path d="M2 12c1.8-4 5.4-7 10-7s8.2 3 10 7c-1.8 4-5.4 7-10 7S3.8 16 2 12Z" />
+        <circle cx="12" cy="12" r="3" />
+        <path d="M3 3l18 18" />
+      </svg>`
+    : `
+      <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+        <path d="M2.5 12s3.75-7 9.5-7 9.5 7 9.5 7-3.75 7-9.5 7-9.5-7-9.5-7Z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>`;
+}
+
+/**
+ * Enhance every password field in the current document with an accessible
+ * show/hide toggle button. The helper is idempotent so pages can call it
+ * safely even if they re-render part of the form later.
+ */
+export function setupPasswordToggles(root = document) {
+  const inputs = root.querySelectorAll('input[type="password"]');
+
+  inputs.forEach((input, index) => {
+    if (input.dataset.passwordToggleInit === 'true') return;
+    input.dataset.passwordToggleInit = 'true';
+
+    if (!input.id) {
+      input.id = `password-field-${Date.now()}-${index}`;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'password-field';
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+    input.classList.add('password-field-input');
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'password-toggle';
+    button.setAttribute('aria-controls', input.id);
+    button.setAttribute('aria-label', 'Show password');
+    button.innerHTML = passwordToggleIcon(false);
+
+    const syncState = () => {
+      const isVisible = input.type === 'text';
+      button.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+      button.innerHTML = passwordToggleIcon(isVisible);
+      button.setAttribute('aria-pressed', String(isVisible));
+    };
+
+    const toggleVisibility = () => {
+      // Flip the HTML input type, then return focus to the field so typing
+      // continues without interruption after the user activates the toggle.
+      input.type = input.type === 'password' ? 'text' : 'password';
+      syncState();
+      input.focus({ preventScroll: true });
+    };
+
+    button.addEventListener('pointerdown', (event) => {
+      // Keep the caret in the input when the toggle is clicked with a mouse
+      // or touch pointer.
+      event.preventDefault();
+    });
+    button.addEventListener('click', toggleVisibility);
+
+    wrapper.appendChild(button);
+    syncState();
+  });
+}

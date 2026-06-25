@@ -10,7 +10,7 @@
   <div class="auth-page">
     <div class="auth-card">
       <div class="auth-logo">
-        <div class="auth-logo-mark">MK</div>
+        <img class="auth-logo-mark auth-logo-mark-image" src="assets/images/mku-wordmark.jpeg" alt="Mount Kenya University logo" />
         <div class="auth-logo-name">MKU Helpdesk</div>
         <div class="auth-logo-sub">Mount Kenya University — Student Support Portal</div>
       </div>
@@ -67,11 +67,13 @@
       showAlert,
       hideAlert,
       authCopy,
-      isEmailVerificationRequiredError
+      isEmailVerificationRequiredError,
+      setupPasswordToggles
     } from './assets/js/api.js';
 
     // Redirect if already logged in
     if (auth.isLoggedIn()) auth.redirectByRole();
+    setupPasswordToggles();
 
     const form      = document.getElementById('loginForm');
     const submitBtn = document.getElementById('submitBtn');
